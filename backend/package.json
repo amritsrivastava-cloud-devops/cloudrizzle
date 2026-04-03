@@ -1,6 +1,6 @@
 {
   "name": "cloudrizzle-backend",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CloudRizzle AI - Robust Infrastructure Platform Backend",
   "main": "src/index.js",
   "engines": {
@@ -26,7 +26,8 @@
 
     "@google-cloud/compute": "^4.0.0",
 
-    "anthropic": "^0.24.0",
+    "anthropic": "latest",
+
     "bcryptjs": "^2.4.3",
     "bull": "^4.12.0",
     "compression": "^1.7.4",
