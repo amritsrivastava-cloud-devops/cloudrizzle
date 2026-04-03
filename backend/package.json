@@ -1,6 +1,6 @@
 {
   "name": "cloudrizzle-backend",
-  "version": "1.0.4",
+  "version": "1.0.3",
   "description": "CloudRizzle AI - Robust Infrastructure Platform Backend",
   "main": "src/index.js",
   "engines": {
@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "jest --detectOpenHandles --forceExit --passWithNoTests",
+    "test": "jest --detectOpenHandles --forceExit",
     "lint": "echo \"No lint configured\""
   },
   "dependencies": {
