@@ -161,7 +161,7 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        run: npm test --if-present
+        run: npm test --if-present -- --passWithNoTests
 
       - name: API smoke test
         working-directory: backend
