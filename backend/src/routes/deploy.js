@@ -1,8 +1,13 @@
 const express = require('express');
-const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 
-// Re-export the deploy router from projects.js
-const { deployRouter } = require('./projects');
+router.use('/auth', require('./auth'));
+router.use('/projects', require('./projects'));
+router.use('/cloud', require('./cloud'));
+router.use('/monitoring', require('./monitoring'));
+router.use('/billing', require('./billing'));
+router.use('/ai', require('./ai'));
+router.use('/templates', require('./templates'));
+router.use('/terraform', require('./terraform'));
 
-module.exports = deployRouter;
+module.exports = router;
