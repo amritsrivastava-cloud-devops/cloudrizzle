@@ -147,6 +147,12 @@ jobs:
         working-directory: backend
         run: npm install
 
+      # 👇 ADD HERE
+      - name: Install Redis CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-tools
+
       - name: Wait for Postgres + Redis
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
