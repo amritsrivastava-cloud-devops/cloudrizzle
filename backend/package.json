@@ -1,6 +1,6 @@
 {
   "name": "cloudrizzle-backend",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "CloudRizzle AI - Robust Infrastructure Platform Backend",
   "main": "src/index.js",
   "engines": {
@@ -21,7 +21,7 @@
     "@aws-sdk/client-lambda": "^3.0.0",
 
     "@azure/arm-compute": "^21.0.0",
-    "@azure/arm-monitor": "^8.0.0",
+    "@azure/arm-monitor": "^7.0.0",
     "@azure/identity": "^4.0.0",
 
     "@google-cloud/compute": "^4.0.0",
