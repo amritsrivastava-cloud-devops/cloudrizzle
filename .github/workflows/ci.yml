@@ -85,6 +85,9 @@ jobs:
         working-directory: backend
         run: npm ci || npm install
 
+      - name: Set DB connection
+        run: echo "DATABASE_URL=postgres://postgres:testpassword@localhost:5432/cloudrizzle_test" >> $GITHUB_ENV
+
       - name: Wait services
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
@@ -98,11 +101,24 @@ jobs:
         working-directory: backend
         run: |
           set -e
+
           node src/index.js &
           PID=$!
-          sleep 5
-          curl -sf http://localhost:5000/health
+
+          echo "Waiting for API..."
+
+          for i in {1..15}; do
+            if curl -sf http://localhost:5000/health; then
+              echo "API is healthy"
+              kill $PID || true
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "API failed to start"
           kill $PID || true
+          exit 1
 
 
 # ================= FRONTEND =================
