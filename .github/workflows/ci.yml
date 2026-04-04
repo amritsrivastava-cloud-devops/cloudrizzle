@@ -30,35 +30,19 @@ jobs:
 
 # ================= CODE QUALITY =================
   code-quality:
-    name: "🔍 Code Quality"
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Cache backend deps
-        uses: actions/cache@v4
-        with:
-          path: backend/node_modules
-          key: backend-${{ runner.os }}-${{ hashFiles('backend/package.json') }}
-
-      - name: Cache frontend deps
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: frontend-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
-
-      - name: Install backend deps
+      - name: Install backend
         working-directory: backend
         run: npm ci || npm install
 
-      - name: Install frontend deps
+      - name: Install frontend
         working-directory: frontend
         run: npm ci || npm install
 
@@ -72,7 +56,6 @@ jobs:
 
 # ================= BACKEND TEST =================
   backend-test:
-    name: "🧪 Backend Tests"
     runs-on: ubuntu-latest
     needs: code-quality
 
@@ -89,18 +72,6 @@ jobs:
         image: redis:7-alpine
         ports: ["6379:6379"]
 
-    env:
-      NODE_ENV: test
-      DB_HOST: localhost
-      DB_PORT: 5432
-      DB_NAME: cloudrizzle_test
-      DB_USER: postgres
-      DB_PASSWORD: testpassword
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      JWT_SECRET: ci-jwt-secret-min-32-characters
-      JWT_REFRESH_SECRET: ci-refresh-secret-min-32-characters
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -111,32 +82,27 @@ jobs:
         working-directory: backend
         run: npm ci || npm install
 
-      - name: Install redis tools
-        run: sudo apt-get update && sudo apt-get install -y redis-tools
-
-      - name: Wait for services
+      - name: Wait services
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
           until redis-cli -h localhost ping | grep -q PONG; do sleep 1; done
 
-      - name: Run tests
+      - name: Test
         working-directory: backend
         run: npm test -- --passWithNoTests
 
-      - name: API smoke test
+      - name: Smoke test API
         working-directory: backend
         run: |
           set -e
           node src/index.js &
           PID=$!
           sleep 5
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:5000/health)
+          curl -sf --max-time 5 http://localhost:5000/health
           kill $PID || true
-          [ "$CODE" = "200" ]
 
 # ================= FRONTEND =================
   frontend-test:
-    name: "🖥️ Frontend Build & Test"
     runs-on: ubuntu-latest
     needs: code-quality
 
@@ -146,15 +112,13 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install deps
+      - name: Install
         working-directory: frontend
         run: npm ci || npm install
 
       - name: Test
         working-directory: frontend
         run: npm test -- --watchAll=false --passWithNoTests
-        env:
-          CI: true
 
       - name: Build
         working-directory: frontend
@@ -164,24 +128,22 @@ jobs:
 
 # ================= SECURITY =================
   security-scan:
-    name: "🔒 Security Scan"
     runs-on: ubuntu-latest
     needs: code-quality
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Backend audit
+      - name: Audit backend
         working-directory: backend
         run: npm install && npm audit --audit-level=high || true
 
-      - name: Frontend audit
+      - name: Audit frontend
         working-directory: frontend
         run: npm install && npm audit --audit-level=high || true
 
 # ================= DOCKER BUILD =================
   docker-build:
-    name: "🐳 Docker Build"
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test, security-scan]
 
@@ -189,7 +151,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
 
       - name: Login Docker
@@ -216,9 +177,8 @@ jobs:
             ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
             ${{ env.FRONTEND_IMAGE }}:latest
 
-# ================= STAGING DEPLOY =================
+# ================= DEPLOY STAGING =================
   deploy-staging:
-    name: "🚀 Deploy Staging"
     runs-on: ubuntu-latest
     needs: docker-build
 
@@ -229,22 +189,95 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
-      - name: Deploy
+      - name: Deploy staging
         run: |
           ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
           set -euo pipefail
           cd /opt/cloudrizzle
 
           cat > .env <<EOT
-          NODE_ENV=staging
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
-          IMAGE_TAG=${{ github.sha }}
-          EOT
+NODE_ENV=staging
+JWT_SECRET=${{ secrets.JWT_SECRET }}
+JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+IMAGE_TAG=${{ github.sha }}
+EOT
 
           docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend:${{ github.sha }}
           docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend:${{ github.sha }}
 
           IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
           curl -sf --max-time 5 http://localhost:5000/health
+          EOF
+
+# ================= DEPLOY PRODUCTION (RESTORED) =================
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: docker-build
+
+    if: github.ref == 'refs/heads/main'
+
+    environment:
+      name: production
+      url: https://cloudrizzle.ai
+
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Deploy production
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+          set -euo pipefail
+          cd /opt/cloudrizzle
+
+          cat > .env <<EOT
+NODE_ENV=production
+JWT_SECRET=${{ secrets.JWT_SECRET }}
+JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
+IMAGE_TAG=${{ github.sha }}
+EOT
+
+          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend:${{ github.sha }}
+          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend:${{ github.sha }}
+
+          IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans --wait --timeout 120
+
+          for i in $(seq 1 10); do
+            curl -sf --max-time 5 http://localhost:5000/health && break
+            sleep 5
+            [ "$i" -eq 10 ] && exit 1
+          done
+          EOF
+
+# ================= ROLLBACK (FIXED + RELIABLE) =================
+  rollback-production:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: failure() && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: Rollback
+        run: |
+          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
+          set -euo pipefail
+          cd /opt/cloudrizzle
+
+          PREV_TAG=$(docker images ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend \
+            --format "{{.Tag}}" | grep -v latest | head -n 2 | tail -n 1)
+
+          echo "Rolling back to: $PREV_TAG"
+
+          IMAGE_TAG=$PREV_TAG docker compose up -d --remove-orphans
+          sleep 10
+
+          curl -sf --max-time 5 http://localhost:5000/health || (
+            echo "Rollback failed"
+            exit 1
+          )
           EOF
