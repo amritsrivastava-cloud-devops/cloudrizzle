@@ -17,31 +17,5 @@ FROM nginx:alpine AS runner
 
 COPY --from=builder /app/build /usr/share/nginx/html
 
-RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    location /static/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location /health {
-        return 200 '{"status":"ok"}';
-        add_header Content-Type application/json;
-    }
-}
-EOF
-
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
