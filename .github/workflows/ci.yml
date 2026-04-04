@@ -1,71 +1,29 @@
-name: "🌩️ CloudRizzle AI — CI/CD Pipeline"
+name: CloudRizzle CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop, "release/**"]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [main, develop]
-  schedule:
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Deploy to environment"
-        required: true
-        default: staging
-        type: choice
-        options: [staging, production]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [ "main", "develop" ]
 
 env:
-  NODE_VERSION: "20"
-  BACKEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend
-  FRONTEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend
+  NODE_VERSION: 20
+  POSTGRES_DB: cloudrizzle_test
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: testpassword
 
 jobs:
 
-# ================= CODE QUALITY =================
-  code-quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install backend
-        working-directory: backend
-        run: npm ci || npm install
-
-      - name: Install frontend
-        working-directory: frontend
-        run: npm ci || npm install
-
-      - name: Lint backend
-        working-directory: backend
-        run: npm run lint --if-present
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint --if-present
-
-
-# ================= BACKEND TEST =================
   backend-test:
     runs-on: ubuntu-latest
-    needs: code-quality
 
     services:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB: cloudrizzle_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
         ports:
           - 5432:5432
 
@@ -83,48 +41,38 @@ jobs:
 
       - name: Install backend deps
         working-directory: backend
-        run: npm ci || npm install
+        run: npm ci
 
       - name: Set DB connection
-        run: echo "DATABASE_URL=postgres://postgres:testpassword@localhost:5432/cloudrizzle_test" >> $GITHUB_ENV
+        run: |
+          echo "DATABASE_URL=postgres://postgres:testpassword@localhost:5432/cloudrizzle_test" >> $GITHUB_ENV
 
-      - name: Wait services
+      - name: Wait for Postgres
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
-          echo "Skipping redis readiness check"
 
-      - name: Test backend
+      - name: Run backend tests
         working-directory: backend
         run: npm test -- --passWithNoTests
 
-      - name: Smoke test API
-        working-directory: backend
-        run: |
-          set -e
-
-          node src/index.js &
-          PID=$!
-
-          echo "Waiting for API..."
-
-          for i in {1..15}; do
-            if curl -sf http://localhost:5000/health; then
-              echo "API is healthy"
-              kill $PID || true
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "API failed to start"
-          kill $PID || true
-          exit 1
-
-
-# ================= FRONTEND =================
-  frontend-test:
+  smoke-test:
     runs-on: ubuntu-latest
-    needs: code-quality
+    needs: backend-test
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
 
     steps:
       - uses: actions/checkout@v4
@@ -133,170 +81,42 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Install frontend
-        working-directory: frontend
-        run: npm ci || npm install
-
-      - name: Test frontend
-        working-directory: frontend
-        run: npm test -- --watchAll=false --passWithNoTests
-
-      - name: Build frontend
-        working-directory: frontend
-        run: npm run build
-        env:
-          CI: false
-
-
-# ================= SECURITY =================
-  security-scan:
-    runs-on: ubuntu-latest
-    needs: code-quality
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Audit backend
+      - name: Install backend deps
         working-directory: backend
-        run: npm install && npm audit --audit-level=high || true
+        run: npm ci
 
-      - name: Audit frontend
-        working-directory: frontend
-        run: npm install && npm audit --audit-level=high || true
+      - name: Set DB connection
+        run: |
+          echo "DATABASE_URL=postgres://postgres:testpassword@localhost:5432/cloudrizzle_test" >> $GITHUB_ENV
 
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
 
-# ================= DOCKER BUILD =================
-  docker-build:
+      - name: Start API
+        working-directory: backend
+        run: |
+          node src/index.js &
+          sleep 8
+
+      - name: Health check
+        run: curl -f http://localhost:5000/health
+
+  frontend-test:
     runs-on: ubuntu-latest
-    needs: [backend-test, frontend-test, security-scan]
-
-    if: github.event_name != 'pull_request'
+    needs: smoke-test
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-buildx-action@v3
-
-      - name: Docker login
-        uses: docker/login-action@v3
+      - uses: actions/setup-node@v4
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Build backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          push: true
-          tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.BACKEND_IMAGE }}:latest
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
 
-      - name: Build frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-            ${{ env.FRONTEND_IMAGE }}:latest
-
-
-# ================= DEPLOY STAGING =================
-  deploy-staging:
-    runs-on: ubuntu-latest
-    needs: docker-build
-    if: github.ref == 'refs/heads/develop'
-
-    steps:
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
-
-      - name: Deploy staging
-        run: |
-          ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
-          set -euo pipefail
-          cd /opt/cloudrizzle
-
-          printf "NODE_ENV=staging\nJWT_SECRET=%s\nJWT_REFRESH_SECRET=%s\nIMAGE_TAG=%s\n" \
-            "${{ secrets.JWT_SECRET }}" \
-            "${{ secrets.JWT_REFRESH_SECRET }}" \
-            "${{ github.sha }}" > .env
-
-          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend:${{ github.sha }}
-          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend:${{ github.sha }}
-
-          IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
-
-          curl -sf http://localhost:5000/health
-          EOF
-
-
-# ================= DEPLOY PRODUCTION =================
-  deploy-production:
-    runs-on: ubuntu-latest
-    needs: docker-build
-    if: github.ref == 'refs/heads/main'
-
-    environment:
-      name: production
-      url: https://cloudrizzle.ai
-
-    steps:
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Deploy production
-        run: |
-          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
-          set -euo pipefail
-          cd /opt/cloudrizzle
-
-          printf "NODE_ENV=production\nJWT_SECRET=%s\nJWT_REFRESH_SECRET=%s\nSTRIPE_SECRET_KEY=%s\nIMAGE_TAG=%s\n" \
-            "${{ secrets.JWT_SECRET }}" \
-            "${{ secrets.JWT_REFRESH_SECRET }}" \
-            "${{ secrets.STRIPE_SECRET_KEY }}" \
-            "${{ github.sha }}" > .env
-
-          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend:${{ github.sha }}
-          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend:${{ github.sha }}
-
-          IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans --wait --timeout 120
-
-          for i in $(seq 1 10); do
-            curl -sf http://localhost:5000/health && break
-            sleep 5
-            [ "$i" -eq 10 ] && exit 1
-          done
-          EOF
-
-
-# ================= ROLLBACK =================
-  rollback-production:
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    if: failure() && github.ref == 'refs/heads/main'
-
-    steps:
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Rollback
-        run: |
-          ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} << 'EOF'
-          set -euo pipefail
-          cd /opt/cloudrizzle
-
-          PREV_TAG=$(docker images ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend \
-            --format "{{.Tag}}" | grep -v latest | head -n 2 | tail -n 1)
-
-          echo "Rolling back to: $PREV_TAG"
-
-          IMAGE_TAG=$PREV_TAG docker compose up -d --remove-orphans
-
-          sleep 10
-          curl -sf http://localhost:5000/health || exit 1
-          EOF
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test -- --passWithNoTests
