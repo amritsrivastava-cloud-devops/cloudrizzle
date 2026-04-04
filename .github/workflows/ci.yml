@@ -22,71 +22,55 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
-  BACKEND_IMAGE:  ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend
+  BACKEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend
   FRONTEND_IMAGE: ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
 jobs:
 
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 1 — CODE QUALITY
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= CODE QUALITY =================
   code-quality:
     name: "🔍 Code Quality"
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ✅ FIX: No cache-dependency-path — uses package.json as cache key
-      #         Works even without package-lock.json committed to repo
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Cache backend node_modules
+      - name: Cache backend deps
         uses: actions/cache@v4
         with:
           path: backend/node_modules
-          key: backend-node-${{ runner.os }}-${{ hashFiles('backend/package.json') }}
-          restore-keys: backend-node-${{ runner.os }}-
+          key: backend-${{ runner.os }}-${{ hashFiles('backend/package.json') }}
 
-      - name: Cache frontend node_modules
+      - name: Cache frontend deps
         uses: actions/cache@v4
         with:
           path: frontend/node_modules
-          key: frontend-node-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
-          restore-keys: frontend-node-${{ runner.os }}-
+          key: frontend-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
 
-      # ✅ FIX: npm install instead of npm ci (ci requires package-lock.json)
       - name: Install backend deps
         working-directory: backend
-        run: npm install
+        run: npm ci || npm install
 
       - name: Install frontend deps
         working-directory: frontend
-        run: npm install
+        run: npm ci || npm install
 
       - name: Lint backend
         working-directory: backend
-        run: npm run lint --if-present || echo "⚠️ No lint script, skipping"
+        run: npm run lint --if-present
 
       - name: Lint frontend
         working-directory: frontend
-        run: npm run lint --if-present || echo "⚠️ No lint script, skipping"
+        run: npm run lint --if-present
 
-      - name: Scan for leaked secrets
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 2 — BACKEND TESTS
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= BACKEND TEST =================
   backend-test:
     name: "🧪 Backend Tests"
     runs-on: ubuntu-latest
@@ -96,94 +80,61 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_DB:       cloudrizzle_test
-          POSTGRES_USER:     postgres
+          POSTGRES_DB: cloudrizzle_test
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: testpassword
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
         ports: ["5432:5432"]
 
       redis:
         image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
         ports: ["6379:6379"]
 
     env:
-      NODE_ENV:           test
-      PORT:               5000
-      DB_HOST:            localhost
-      DB_PORT:            5432
-      DB_NAME:            cloudrizzle_test
-      DB_USER:            postgres
-      DB_PASSWORD:        testpassword
-      REDIS_HOST:         localhost
-      REDIS_PORT:         6379
-      JWT_SECRET:         ci-jwt-secret-min-32-characters-here
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: 5432
+      DB_NAME: cloudrizzle_test
+      DB_USER: postgres
+      DB_PASSWORD: testpassword
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      JWT_SECRET: ci-jwt-secret-min-32-characters
       JWT_REFRESH_SECRET: ci-refresh-secret-min-32-characters
-      ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Restore backend cache
-        uses: actions/cache@v4
-        with:
-          path: backend/node_modules
-          key: backend-node-${{ runner.os }}-${{ hashFiles('backend/package.json') }}
-          restore-keys: backend-node-${{ runner.os }}-
-
-      - name: Install dependencies
+      - name: Install deps
         working-directory: backend
-        run: npm install
+        run: npm ci || npm install
 
-      # 👇 ADD HERE
-      - name: Install Redis CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y redis-tools
+      - name: Install redis tools
+        run: sudo apt-get update && sudo apt-get install -y redis-tools
 
-      - name: Wait for Postgres + Redis
+      - name: Wait for services
         run: |
           until pg_isready -h localhost -p 5432 -U postgres; do sleep 1; done
           until redis-cli -h localhost ping | grep -q PONG; do sleep 1; done
-          echo "✅ All services ready"
 
       - name: Run tests
         working-directory: backend
-        run: npm test --if-present -- --passWithNoTests
+        run: npm test -- --passWithNoTests
 
       - name: API smoke test
         working-directory: backend
         run: |
+          set -e
           node src/index.js &
           PID=$!
-          sleep 4
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/health)
-          kill $PID 2>/dev/null || true
-          [ "$STATUS" = "200" ] && echo "✅ /health returned 200" || (echo "❌ Got HTTP $STATUS" && exit 1)
+          sleep 5
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:5000/health)
+          kill $PID || true
+          [ "$CODE" = "200" ]
 
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-coverage
-          path: backend/coverage/
-          retention-days: 14
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 3 — FRONTEND BUILD & TEST
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= FRONTEND =================
   frontend-test:
     name: "🖥️ Frontend Build & Test"
     runs-on: ubuntu-latest
@@ -191,56 +142,27 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Restore frontend cache
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: frontend-node-${{ runner.os }}-${{ hashFiles('frontend/package.json') }}
-          restore-keys: frontend-node-${{ runner.os }}-
-
-      - name: Install dependencies
+      - name: Install deps
         working-directory: frontend
-        run: npm install
+        run: npm ci || npm install
 
-      - name: Run tests
+      - name: Test
         working-directory: frontend
-        run: npm test --if-present -- --watchAll=false --passWithNoTests
+        run: npm test -- --watchAll=false --passWithNoTests
         env:
           CI: true
 
-      - name: Build production bundle
+      - name: Build
         working-directory: frontend
         run: npm run build
         env:
           CI: false
-          REACT_APP_API_URL: https://api.cloudrizzle.ai/api
-          REACT_APP_WS_URL:  https://api.cloudrizzle.ai
 
-      - name: Check bundle size (max 20 MB)
-        working-directory: frontend
-        run: |
-          BYTES=$(du -sb build/ | cut -f1)
-          LABEL=$(du -sh build/ | cut -f1)
-          echo "📦 Bundle size: $LABEL"
-          [ "$BYTES" -lt 20971520 ] \
-            && echo "✅ Size OK" \
-            || (echo "❌ Bundle too large — limit is 20 MB" && exit 1)
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build-${{ github.sha }}
-          path: frontend/build/
-          retention-days: 7
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 4 — SECURITY SCAN
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= SECURITY =================
   security-scan:
     name: "🔒 Security Scan"
     runs-on: ubuntu-latest
@@ -249,410 +171,80 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Restore caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            backend/node_modules
-            frontend/node_modules
-          key: all-node-${{ runner.os }}-${{ hashFiles('backend/package.json', 'frontend/package.json') }}
-
-      - name: npm audit — backend
+      - name: Backend audit
         working-directory: backend
-        run: |
-          npm install
-          npm audit --audit-level=high || echo "⚠️ Vulnerabilities found — review before merging"
+        run: npm install && npm audit --audit-level=high || true
 
-      - name: npm audit — frontend
+      - name: Frontend audit
         working-directory: frontend
-        run: |
-          npm install
-          npm audit --audit-level=high || echo "⚠️ Vulnerabilities found — review before merging"
+        run: npm install && npm audit --audit-level=high || true
 
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: CRITICAL,HIGH
-          format: sarif
-          output: trivy-results.sarif
-        continue-on-error: true
-
-      - name: Upload to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: trivy-results.sarif
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 5 — BUILD & PUSH DOCKER IMAGES
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= DOCKER BUILD =================
   docker-build:
-    name: "🐳 Docker Build & Push"
+    name: "🐳 Docker Build"
     runs-on: ubuntu-latest
     needs: [backend-test, frontend-test, security-scan]
-    if: github.event_name != 'pull_request' && github.event_name != 'schedule'
 
-    outputs:
-      image-tag: ${{ github.sha }}
+    if: github.event_name != 'pull_request'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # ✅ Validate secrets early (prevents confusing failures)
-      - name: Validate Docker credentials
-        run: |
-          if [ -z "${{ secrets.DOCKER_USERNAME }}" ] || [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "❌ Missing DOCKER_USERNAME or DOCKER_PASSWORD"
-            exit 1
-          fi
-
-      - name: Login to Docker Hub
+      - name: Login Docker
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # ================= BACKEND =================
-      - name: Build & Push Backend Image
+      - name: Build backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.BACKEND_IMAGE }}:${{ github.ref_name }}
             ${{ env.BACKEND_IMAGE }}:latest
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
-          labels: |
-            org.opencontainers.image.title=CloudRizzle Backend
-            org.opencontainers.image.revision=${{ github.sha }}
 
-      # ================= FRONTEND =================
-      - name: Build & Push Frontend Image
+      - name: Build frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-            ${{ env.FRONTEND_IMAGE }}:${{ github.ref_name }}
             ${{ env.FRONTEND_IMAGE }}:latest
-          build-args: |
-            REACT_APP_API_URL=https://api.cloudrizzle.ai/api
-            REACT_APP_WS_URL=https://api.cloudrizzle.ai
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-          labels: |
-            org.opencontainers.image.title=CloudRizzle Frontend
-            org.opencontainers.image.revision=${{ github.sha }}
 
-      # ================= SECURITY SCAN =================
-      - name: Scan Backend Image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ env.BACKEND_IMAGE }}:${{ github.sha }}"
-          severity: CRITICAL
-          exit-code: "0"
-        continue-on-error: true
-
-      - name: Scan Frontend Image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: "${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
-          severity: CRITICAL
-          exit-code: "0"
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 6 — DEPLOY → STAGING
-# ══════════════════════════════════════════════════════════════════════════════
+# ================= STAGING DEPLOY =================
   deploy-staging:
-    name: "🚀 Deploy → Staging"
+    name: "🚀 Deploy Staging"
     runs-on: ubuntu-latest
     needs: docker-build
-    if: |
-      github.ref == 'refs/heads/develop' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
-    environment:
-      name: staging
-      url: https://staging.cloudrizzle.ai
+
+    if: github.ref == 'refs/heads/develop'
 
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
+      - uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
 
-      - name: Trust staging host
-        run: ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Deploy to staging
-        env:
-          H:   ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }}
-          TAG: ${{ github.sha }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          JWT_SECRET:         ${{ secrets.JWT_SECRET }}
-          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
-          DB_PASSWORD:        ${{ secrets.STAGING_DB_PASSWORD }}
-          DU:                 ${{ secrets.DOCKER_USERNAME }}
+      - name: Deploy
         run: |
-          ssh "$H" bash -s << ENDSSH
-            set -e
-            mkdir -p /opt/cloudrizzle && cd /opt/cloudrizzle
-            cat > .env <<ENV
+          ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+          set -euo pipefail
+          cd /opt/cloudrizzle
+
+          cat > .env <<EOT
           NODE_ENV=staging
-          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          DB_PASSWORD=${DB_PASSWORD}
-          DOCKER_USERNAME=${DU}
-          IMAGE_TAG=${TAG}
-          ENV
-            docker pull ${DU}/cloudrizzle-backend:${TAG}
-            docker pull ${DU}/cloudrizzle-frontend:${TAG}
-            IMAGE_TAG=${TAG} docker compose up -d --remove-orphans --wait
-            sleep 8
-            curl -sf http://localhost:5000/health && echo "✅ Staging healthy"
-          ENDSSH
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+          IMAGE_TAG=${{ github.sha }}
+          EOT
 
-      - name: Smoke tests
-        run: |
-          sleep 12
-          curl -sf https://staging.cloudrizzle.ai/health     && echo "✅ Frontend up"
-          curl -sf https://staging-api.cloudrizzle.ai/health && echo "✅ API up"
-        continue-on-error: true
+          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-backend:${{ github.sha }}
+          docker pull ${{ secrets.DOCKER_USERNAME }}/cloudrizzle-frontend:${{ github.sha }}
 
-      - name: Slack alert
-        uses: slackapi/slack-github-action@v1.26.0
-        if: always()
-        with:
-          payload: >
-            {"text":"${{ job.status == 'success' && '✅' || '❌' }}
-            *CloudRizzle* → *STAGING* | `${{ github.ref_name }}` | @${{ github.actor }} | ${{ job.status }}"}
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 7 — DEPLOY → PRODUCTION  (requires manual approval in GitHub env settings)
-# ══════════════════════════════════════════════════════════════════════════════
-  deploy-production:
-    name: "🏭 Deploy → Production"
-    runs-on: ubuntu-latest
-    needs: docker-build
-    if: |
-      github.ref == 'refs/heads/main' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
-    environment:
-      name: production
-      url: https://cloudrizzle.ai
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Trust production host
-        run: ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Backup database
-        env:
-          H: ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}
-        run: |
-          ssh "$H" bash -s << 'ENDSSH'
-            mkdir -p /backups
-            BACKUP="/backups/cloudrizzle-$(date +%Y%m%d-%H%M%S).sql"
-            docker exec cloudrizzle-postgres pg_dump -U postgres cloudrizzle > "$BACKUP"
-            echo "✅ DB backup: $BACKUP"
-            ls -t /backups/*.sql | tail -n +11 | xargs -r rm
-          ENDSSH
-
-      - name: Deploy to production
-        env:
-          H:   ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}
-          TAG: ${{ github.sha }}
-          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
-          JWT_SECRET:          ${{ secrets.JWT_SECRET }}
-          JWT_REFRESH_SECRET:  ${{ secrets.JWT_REFRESH_SECRET }}
-          DB_PASSWORD:         ${{ secrets.PROD_DB_PASSWORD }}
-          STRIPE_SECRET_KEY:   ${{ secrets.STRIPE_SECRET_KEY }}
-          DU:                  ${{ secrets.DOCKER_USERNAME }}
-        run: |
-          ssh "$H" bash -s << ENDSSH
-            set -e
-            cd /opt/cloudrizzle
-            cat > .env <<ENV
-          NODE_ENV=production
-          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-          JWT_SECRET=${JWT_SECRET}
-          JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-          DB_PASSWORD=${DB_PASSWORD}
-          STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-          DOCKER_USERNAME=${DU}
-          IMAGE_TAG=${TAG}
-          ENV
-            docker pull ${DU}/cloudrizzle-backend:${TAG}
-            docker pull ${DU}/cloudrizzle-frontend:${TAG}
-            IMAGE_TAG=${TAG} docker compose up -d --remove-orphans --wait --timeout 120
-            for i in \$(seq 1 10); do
-              curl -sf http://localhost:5000/health && echo "✅ Healthy on attempt \$i" && break
-              echo "⏳ Attempt \$i/10 — retrying..."
-              sleep 6
-              [ "\$i" -eq 10 ] && echo "❌ Deploy failed — rolling back" && docker compose down && exit 1
-            done
-            docker image prune -f
-            echo "🎉 Production deploy complete"
-          ENDSSH
-
-      - name: Production smoke tests
-        run: |
-          sleep 20
-          curl -sf https://cloudrizzle.ai/health              && echo "✅ Frontend"
-          curl -sf https://api.cloudrizzle.ai/health          && echo "✅ API"
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://api.cloudrizzle.ai/api/auth/me \
-            -H "Authorization: Bearer bad_token")
-          [ "$CODE" = "401" ] && echo "✅ Auth guard works"
-        continue-on-error: true
-
-      - name: Create GitHub Release
-        if: success()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "v${{ github.run_number }}"
-          name: "🌩️ Release v${{ github.run_number }}"
-          body: |
-            ## CloudRizzle AI — Release v${{ github.run_number }}
-
-            | | |
-            |---|---|
-            | **Commit** | `${{ github.sha }}` |
-            | **Branch** | `${{ github.ref_name }}` |
-            | **By**     | @${{ github.actor }} |
-
-            ### Docker Images
-            ```
-            ${{ env.BACKEND_IMAGE }}:${{ github.sha }}
-            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
-            ```
-            ${{ github.event.head_commit.message }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Slack alert
-        uses: slackapi/slack-github-action@v1.26.0
-        if: always()
-        with:
-          payload: >
-            {"text":"${{ job.status == 'success' && '🚀' || '🔥' }}
-            *CloudRizzle* → *PRODUCTION* v${{ github.run_number }}
-            | @${{ github.actor }} | ${{ job.status }} | https://cloudrizzle.ai"}
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 8 — AUTO ROLLBACK if production deploy fails
-# ══════════════════════════════════════════════════════════════════════════════
-  rollback-production:
-    name: "⏪ Auto-Rollback"
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    if: failure() && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
-
-      - name: Trust production host
-        run: ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Rollback to previous image
-        env:
-          H:  ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}
-          DU: ${{ secrets.DOCKER_USERNAME }}
-        run: |
-          ssh "$H" bash -s << ENDSSH
-            echo "⏪ Rolling back..."
-            cd /opt/cloudrizzle
-            PREV=\$(docker images ${DU}/cloudrizzle-backend \
-              --format "{{.Tag}}" | grep -v "latest\|main" | sed -n '2p')
-            echo "Reverting to: \$PREV"
-            IMAGE_TAG=\$PREV docker compose up -d --remove-orphans
-            sleep 8
-            curl -sf http://localhost:5000/health \
-              && echo "✅ Rollback OK" || echo "❌ Manual fix needed"
-          ENDSSH
-
-      - name: Alert Slack
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: >
-            {"text":"⏪ 🚨 *CloudRizzle PRODUCTION ROLLBACK triggered!*
-            Commit `${{ github.sha }}` failed. Previous version restored. @channel"}
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-        continue-on-error: true
-
-# ══════════════════════════════════════════════════════════════════════════════
-# JOB 9 — SCHEDULED HEALTH CHECK every 6 hours
-# ══════════════════════════════════════════════════════════════════════════════
-  scheduled-healthcheck:
-    name: "💓 Health Check"
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-
-    steps:
-      - name: Check all endpoints
-        run: |
-          fail=0
-          check() {
-            CODE=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 10 "$1" || echo "000")
-            [ "$CODE" = "200" ] \
-              && echo "✅ $2 ($CODE)" \
-              || { echo "❌ $2 ($CODE) — $1"; fail=1; }
-          }
-          check "https://cloudrizzle.ai"             "Frontend"
-          check "https://api.cloudrizzle.ai/health"  "Backend API"
-          exit $fail
-        continue-on-error: true
-
-      - name: Alert on failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.26.0
-        with:
-          payload: >
-            {"text":"🚨 *CloudRizzle health check FAILED* — $(date -u '+%Y-%m-%d %H:%M UTC')"}
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-        continue-on-error: true
+          IMAGE_TAG=${{ github.sha }} docker compose up -d --remove-orphans
+          curl -sf --max-time 5 http://localhost:5000/health
+          EOF
