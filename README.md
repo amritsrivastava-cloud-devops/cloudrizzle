@@ -1,210 +1,111 @@
-# CloudRizzle AI 🌩️
+<div align="center">
 
-> **Robust Infrastructure in One Prompt** — A multi-cloud management platform powered by AI
+<br />
 
-![CloudRizzle Architecture](./docs/architecture.png)
+```
+  ██████╗██╗      ██████╗ ██╗   ██╗██████╗ ██████╗ ██╗███████╗███████╗██╗     ███████╗
+ ██╔════╝██║     ██╔═══██╗██║   ██║██╔══██╗██╔══██╗██║╚══███╔╝╚══███╔╝██║     ██╔════╝
+ ██║     ██║     ██║   ██║██║   ██║██║  ██║██████╔╝██║  ███╔╝   ███╔╝ ██║     █████╗  
+ ██║     ██║     ██║   ██║██║   ██║██║  ██║██╔══██╗██║ ███╔╝   ███╔╝  ██║     ██╔══╝  
+ ╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝██║  ██║██║███████╗███████╗███████╗███████╗
+  ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝╚══════╝╚══════╝╚══════╝╚══════╝
+```
 
-## Overview
+**AI-powered multi-cloud infrastructure platform**
 
-CloudRizzle AI is a production-grade platform that lets you:
+Describe your infrastructure in plain English. CloudRizzle builds it on AWS, Azure, and GCP.
 
-- 🔗 **Connect** AWS, Azure, and GCP accounts in seconds
-- 🤖 **Ask AI** to design, generate, and troubleshoot infrastructure
-- ⚡ **Deploy** cloud resources using Terraform templates in one click
-- 📊 **Monitor** live performance, costs, and logs across all clouds
-- 💸 **Track Costs** with real-time billing dashboards and forecasts
+<br />
+
+![Status](https://img.shields.io/badge/status-in%20development-orange?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.11+-blue?style=flat-square&logo=python)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+![Terraform](https://img.shields.io/badge/terraform-1.6+-purple?style=flat-square&logo=terraform)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)
+
+<br />
+
+</div>
 
 ---
 
-## Architecture
+## What is CloudRizzle?
 
-```
-CLIENT
-  └── React Frontend (Dashboard · Projects · Monitoring · Settings · Admin)
+CloudRizzle is an open-source, AI-driven cloud infrastructure platform. Instead of writing complex Terraform or CloudFormation code manually, you simply describe what you need in plain English — and CloudRizzle generates, validates, and deploys the entire infrastructure for you across AWS, Azure, and GCP.
 
-API LAYER
-  └── Express REST API (JWT auth · WebSocket · Rate limiting · CORS)
+**Example:**
+> *"Create a 3-tier AWS VPC with a load balancer, 2 EC2 instances, and an RDS PostgreSQL database with automated backups"*
 
-SERVICES
-  ├── Auth Service          (JWT · Sessions · Redis)
-  ├── Projects & Deploy     (Pipeline · Templates · Terraform)
-  ├── Cloud Accounts        (AWS/Azure/GCP SDK · Monitoring)
-  └── Billing & AI          (Stripe · Claude API)
+CloudRizzle converts this into production-ready Terraform code, shows you a visual canvas of the infrastructure, runs a plan for your approval, and then applies it — all from one interface.
 
-DATA
-  ├── PostgreSQL            (Users · Projects · Billing)
-  └── Redis                 (Cache · Sessions · Queues)
+---
 
-EXTERNAL
-  ├── AWS SDK               (EC2 · S3 · Lambda · RDS · ECS)
-  ├── Azure SDK             (VMs · Blob · AKS)
-  ├── GCP SDK               (Compute · GCS · GKE)
-  └── Claude AI API         (Infrastructure assistant)
-```
+## Features
+
+- **AI Infra Generation** — Natural language to Terraform code using Claude / GPT-4o
+- **Multi-Cloud Support** — AWS, Azure, and GCP from one unified platform
+- **Visual Infra Canvas** — See your infrastructure as an interactive node graph
+- **Plan → Approve → Apply** — Never deploy blindly; always review before apply
+- **Project Management** — Organize infra into projects with full deployment history
+- **Cost Tracking** — Real-time monthly cost across all cloud providers
+- **Role-Based Access** — User dashboard + full admin panel for platform management
+- **Drift Detection** — Know when your real infra drifts from your desired state
+- **Self-Hostable** — Run entirely on your own server, no vendor lock-in
 
 ---
 
 ## Tech Stack
 
-| Layer       | Technology                        |
-|-------------|-----------------------------------|
-| Frontend    | React 18, Zustand, Recharts, Socket.io-client |
-| Backend     | Node.js, Express, Socket.io       |
-| Database    | PostgreSQL 16 (Sequelize ORM)     |
-| Cache/Queue | Redis 7 (ioredis, Bull)           |
-| IaC         | Terraform (AWS provider)          |
-| AI          | Anthropic Claude API              |
-| Auth        | JWT (access + refresh tokens)     |
-| Container   | Docker, Docker Compose, Nginx     |
+### Frontend
+| Technology | Purpose |
+|---|---|
+| Next.js 14 (App Router) | React framework with SSR |
+| TailwindCSS | Utility-first styling |
+| shadcn/ui | Component library |
+| React Flow | Interactive infra canvas |
+| TanStack Query | Server state, caching, background refresh |
+| Zustand | Global client state management |
 
----
+### Backend
+| Technology | Purpose |
+|---|---|
+| FastAPI (Python) | Core REST API |
+| Temporal | Durable workflow engine for long-running jobs |
+| Redis | Job queue and caching |
+| PostgreSQL + pgvector | Primary database + semantic search |
+| Clerk | Authentication and role management |
 
-## Quick Start
+### AI Engine
+| Technology | Purpose |
+|---|---|
+| Claude API / GPT-4o | LLM for infrastructure generation |
+| LangGraph | Stateful AI workflow orchestration |
+| Prompt Validator | Validates AI output before execution |
+| Policy Engine | Safety checks on generated Terraform |
 
-### Prerequisites
+### Infrastructure as Code
+| Technology | Purpose |
+|---|---|
+| Terraform | Primary IaC engine (multi-cloud) |
+| Atlantis | Safe plan/apply workflow with approvals |
+| Drift Detection | Scheduled state comparison |
+| Policy Checks | OPA / Checkov compliance gates |
 
-- Node.js 20+
-- Docker & Docker Compose
-- Anthropic API key (for AI features)
+### Cloud Providers
+| Provider | SDK |
+|---|---|
+| AWS | Boto3 |
+| Azure | azure-mgmt |
+| GCP | google-cloud SDK |
 
-### 1. Clone & Configure
-
-```bash
-git clone https://github.com/your-org/cloudrizzle-ai.git
-cd cloudrizzle-ai
-
-# Copy env file
-cp backend/.env.example backend/.env
-
-# Edit and fill in your keys
-nano backend/.env
-```
-
-### 2. Start with Docker Compose (Recommended)
-
-```bash
-# Set required env vars
-export ANTHROPIC_API_KEY=sk-ant-your-key-here
-export JWT_SECRET=your-super-secret-jwt-key-min-32-chars
-
-# Start all services
-docker compose up -d
-
-# View logs
-docker compose logs -f backend
-```
-
-Services will be available at:
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:5000
-- **API Health**: http://localhost:5000/health
-
-### 3. Development Mode (without Docker)
-
-```bash
-# Terminal 1: Start PostgreSQL & Redis
-docker compose up postgres redis -d
-
-# Terminal 2: Backend
-cd backend
-npm install
-cp .env.example .env   # fill in values
-npm run dev
-
-# Terminal 3: Frontend
-cd frontend
-npm install
-npm start
-```
-
----
-
-## Demo Credentials
-
-```
-Email:    demo@cloudrizzle.ai
-Password: Demo@12345
-```
-
----
-
-## Environment Variables
-
-### Backend (`backend/.env`)
-
-| Variable              | Description                        | Required |
-|-----------------------|------------------------------------|----------|
-| `JWT_SECRET`          | JWT signing secret (32+ chars)     | ✅       |
-| `JWT_REFRESH_SECRET`  | Refresh token secret (32+ chars)   | ✅       |
-| `ANTHROPIC_API_KEY`   | Claude AI API key                  | ✅ (AI)  |
-| `DB_HOST`             | PostgreSQL host                    | ✅       |
-| `DB_PASSWORD`         | PostgreSQL password                | ✅       |
-| `REDIS_HOST`          | Redis host                         | ✅       |
-| `AWS_ACCESS_KEY_ID`   | AWS credentials (for real infra)   | Optional |
-| `STRIPE_SECRET_KEY`   | Stripe for billing                 | Optional |
-
----
-
-## API Reference
-
-### Auth
-| Method | Endpoint             | Description         |
-|--------|----------------------|---------------------|
-| POST   | `/api/auth/register` | Register new user   |
-| POST   | `/api/auth/login`    | Login               |
-| POST   | `/api/auth/refresh`  | Refresh access token|
-| POST   | `/api/auth/logout`   | Logout              |
-| GET    | `/api/auth/me`       | Get current user    |
-
-### Cloud Accounts
-| Method | Endpoint                         | Description              |
-|--------|----------------------------------|--------------------------|
-| GET    | `/api/cloud/accounts`            | List accounts            |
-| POST   | `/api/cloud/accounts`            | Add cloud account        |
-| GET    | `/api/cloud/accounts/:id/resources` | Get account resources |
-| GET    | `/api/cloud/accounts/:id/costs`  | Get cost data            |
-| DELETE | `/api/cloud/accounts/:id`        | Remove account           |
-| GET    | `/api/cloud/summary`             | Overall cost summary     |
-
-### AI
-| Method | Endpoint                    | Description                |
-|--------|-----------------------------|----------------------------|
-| POST   | `/api/ai/chat`              | Chat with CloudRizzle AI   |
-| POST   | `/api/ai/generate-terraform`| Generate Terraform code    |
-| POST   | `/api/ai/analyze-cost`      | AI cost analysis           |
-| GET    | `/api/ai/conversations`     | List conversations         |
-
-### Terraform
-| Method | Endpoint                    | Description              |
-|--------|-----------------------------|--------------------------|
-| GET    | `/api/terraform/templates`  | List templates           |
-| POST   | `/api/terraform/plan`       | Run terraform plan       |
-| POST   | `/api/terraform/apply`      | Apply infrastructure     |
-| GET    | `/api/terraform/executions/:id` | Get execution status |
-
-### Monitoring
-| Method | Endpoint                       | Description            |
-|--------|--------------------------------|------------------------|
-| GET    | `/api/monitoring/overview`     | Health & alerts        |
-| GET    | `/api/monitoring/metrics`      | Time-series metrics    |
-| GET    | `/api/monitoring/logs`         | Live log stream        |
-| GET    | `/api/monitoring/costs/forecast` | Cost forecast        |
-
----
-
-## WebSocket Events
-
-| Event                      | Direction        | Description                  |
-|----------------------------|------------------|------------------------------|
-| `metrics:live`             | Server → Client  | Live CPU/memory/network stats|
-| `deployment:created`       | Server → Client  | New deployment started       |
-| `deployment:log`           | Server → Client  | Deployment log line          |
-| `deployment:complete`      | Server → Client  | Deployment finished          |
-| `terraform:log`            | Server → Client  | Terraform output line        |
-| `terraform:plan:complete`  | Server → Client  | Plan finished with summary   |
-| `terraform:apply:complete` | Server → Client  | Resources created            |
-| `cloud:account:added`      | Server → Client  | Cloud account connected      |
-| `subscribe:monitoring`     | Client → Server  | Subscribe to account metrics |
+### Observability
+| Technology | Purpose |
+|---|---|
+| Prometheus | Metrics collection |
+| Grafana | Dashboards and alerting |
+| Loki | Log aggregation |
+| OpenTelemetry | Distributed tracing |
 
 ---
 
@@ -212,85 +113,301 @@ Password: Demo@12345
 
 ```
 cloudrizzle/
-├── backend/
-│   ├── src/
-│   │   ├── index.js              # Server entry point
-│   │   ├── routes/
-│   │   │   ├── auth.js           # Authentication
-│   │   │   ├── cloud.js          # Cloud account management
-│   │   │   ├── projects.js       # Projects & deployments
-│   │   │   ├── ai.js             # Claude AI integration
-│   │   │   ├── terraform.js      # Terraform execution
-│   │   │   ├── monitoring.js     # Metrics & logs
-│   │   │   ├── billing.js        # Billing & usage
-│   │   │   └── templates.js      # Infrastructure templates
-│   │   ├── middleware/
-│   │   │   └── auth.js           # JWT middleware
-│   │   ├── models/
-│   │   │   └── index.js          # Sequelize models
-│   │   ├── websocket/
-│   │   │   └── socketManager.js  # Socket.io setup
-│   │   └── utils/
-│   │       ├── database.js       # PostgreSQL connection
-│   │       ├── redis.js          # Redis connection
-│   │       └── logger.js         # Winston logger
-│   ├── Dockerfile
-│   ├── package.json
-│   └── .env.example
 │
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx               # Root router
-│   │   ├── index.js              # React entry
-│   │   ├── index.css             # Design system / global CSS
-│   │   ├── pages/
-│   │   │   ├── LoginPage.jsx
-│   │   │   ├── DashboardPage.jsx
-│   │   │   ├── CloudAccountsPage.jsx
-│   │   │   ├── ProjectsPage.jsx
-│   │   │   ├── MonitoringPage.jsx
-│   │   │   ├── DeployPage.jsx
-│   │   │   ├── TemplatesPage.jsx
-│   │   │   ├── AIAssistantPage.jsx
-│   │   │   └── SettingsPage.jsx
-│   │   ├── components/
-│   │   │   └── layout/
-│   │   │       ├── AppShell.jsx          # Sidebar + header
-│   │   │       └── NotificationToast.jsx
-│   │   ├── store/
-│   │   │   └── index.js          # Zustand stores
-│   │   ├── hooks/
-│   │   │   └── useSocket.js      # WebSocket hook
-│   │   └── utils/
-│   │       └── api.js            # Axios instance
-│   ├── public/
-│   │   └── index.html
-│   ├── Dockerfile
-│   └── package.json
+├── frontend/                        # Next.js 14 application
+│   ├── app/
+│   │   ├── (auth)/                  # Auth pages (login, signup)
+│   │   ├── (user)/                  # User dashboard routes
+│   │   │   ├── dashboard/
+│   │   │   ├── projects/
+│   │   │   ├── deployments/
+│   │   │   └── canvas/
+│   │   ├── (admin)/                 # Admin panel routes (protected)
+│   │   │   ├── dashboard/
+│   │   │   ├── users/
+│   │   │   ├── projects/
+│   │   │   └── deployments/
+│   │   └── api/                     # Next.js API routes (proxy layer)
+│   ├── components/
+│   │   ├── ui/                      # shadcn/ui base components
+│   │   ├── canvas/                  # React Flow infra canvas
+│   │   ├── prompt/                  # AI prompt input components
+│   │   └── layout/                  # Sidebar, navbar, shell
+│   ├── lib/
+│   │   ├── api.ts                   # API client (TanStack Query hooks)
+│   │   └── store.ts                 # Zustand global store
+│   └── middleware.ts                # Clerk auth + role-based routing
 │
-├── nginx/
-│   └── nginx.conf
-├── docker-compose.yml
-└── README.md
+├── backend/                         # FastAPI application
+│   ├── app/
+│   │   ├── main.py                  # FastAPI entry point
+│   │   ├── api/
+│   │   │   ├── routes/
+│   │   │   │   ├── auth.py          # Auth endpoints
+│   │   │   │   ├── projects.py      # Project CRUD
+│   │   │   │   ├── deployments.py   # Deployment management
+│   │   │   │   ├── infra.py         # Infra resource tracking
+│   │   │   │   ├── ai.py            # AI generation endpoints
+│   │   │   │   └── admin/           # Admin-only endpoints
+│   │   │   │       ├── users.py
+│   │   │   │       ├── projects.py
+│   │   │   │       └── deployments.py
+│   │   │   └── deps.py              # Shared dependencies (auth, db)
+│   │   ├── core/
+│   │   │   ├── config.py            # Environment configuration
+│   │   │   ├── security.py          # JWT / Clerk token validation
+│   │   │   └── database.py          # SQLAlchemy setup
+│   │   ├── models/                  # SQLAlchemy ORM models
+│   │   │   ├── user.py
+│   │   │   ├── project.py
+│   │   │   ├── deployment.py
+│   │   │   └── infra_resource.py
+│   │   ├── schemas/                 # Pydantic request/response schemas
+│   │   ├── services/
+│   │   │   ├── ai/
+│   │   │   │   ├── generator.py     # LangGraph AI pipeline
+│   │   │   │   ├── validator.py     # Terraform output validator
+│   │   │   │   └── policy.py        # Policy engine checks
+│   │   │   ├── terraform/
+│   │   │   │   ├── runner.py        # Terraform plan/apply executor
+│   │   │   │   ├── parser.py        # Terraform output parser
+│   │   │   │   └── drift.py         # Drift detection logic
+│   │   │   └── cloud/
+│   │   │       ├── aws.py           # AWS SDK integration
+│   │   │       ├── azure.py         # Azure SDK integration
+│   │   │       └── gcp.py           # GCP SDK integration
+│   │   └── workers/                 # Temporal workflow definitions
+│   │       ├── deploy_workflow.py
+│   │       └── drift_workflow.py
+│   ├── migrations/                  # Alembic DB migrations
+│   ├── tests/
+│   └── requirements.txt
+│
+├── infrastructure/                  # CloudRizzle's own infra (meta!)
+│   ├── terraform/                   # Terraform for deploying CloudRizzle
+│   └── docker/
+│       ├── Dockerfile.frontend
+│       ├── Dockerfile.backend
+│       └── docker-compose.yml
+│
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                   # CI pipeline (lint, test)
+│       └── deploy.yml               # CD pipeline
+│
+├── docs/                            # Documentation
+│   ├── architecture.md
+│   ├── api.md
+│   └── deployment.md
+│
+├── .env.example                     # Environment variable template
+├── .gitignore
+├── README.md
+└── LICENSE
 ```
+
+---
+
+## Architecture Overview
+
+```
+User / Admin Browser
+        │
+        ▼
+  Next.js Frontend  ──────────────────────────────────────────────────
+  (App Router)                                                        │
+        │                                                             │
+        ▼                                                             │
+  FastAPI Backend  (REST API + role-based auth)                       │
+        │                                                             │
+        ├── AI Engine (LangGraph + Claude / GPT-4o)                  │
+        │       └── Generates Terraform code from prompt             │
+        │                                                             │
+        ├── Temporal Workflows                                        │
+        │       └── plan → approve → apply (durable, retryable)      │
+        │                                                             │
+        ├── Terraform Runner                                          │
+        │       └── Executes against AWS / Azure / GCP               │
+        │                                                             │
+        └── PostgreSQL + pgvector                                     │
+                └── Users, Projects, Deployments, Infra State        │
+                                                                      │
+  Observability: Prometheus + Grafana + Loki + OpenTelemetry ─────────
+```
+
+---
+
+## Getting Started
+
+> Full setup guide coming soon. This section will be updated as the project is built.
+
+### Prerequisites
+
+- Node.js 18+
+- Python 3.11+
+- PostgreSQL 15+
+- Redis
+- Terraform 1.6+
+- Docker (optional but recommended)
+
+### Environment Variables
+
+Copy the example env file and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+Key variables:
+
+```env
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/cloudrizzle
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Auth (Clerk)
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+
+# AI
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+
+# AWS
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_DEFAULT_REGION=
+
+# Azure
+AZURE_SUBSCRIPTION_ID=
+AZURE_TENANT_ID=
+AZURE_CLIENT_ID=
+AZURE_CLIENT_SECRET=
+
+# GCP
+GOOGLE_APPLICATION_CREDENTIALS=
+GCP_PROJECT_ID=
+```
+
+### Quick Start (Development)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cloudrizzle.git
+cd cloudrizzle
+
+# Backend
+cd backend
+python -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# Frontend (new terminal)
+cd frontend
+npm install
+npm run dev
+```
+
+Visit `http://localhost:3000`
 
 ---
 
 ## Roadmap
 
-- [ ] Real AWS SDK integration (replace mock data)
-- [ ] Terraform state backend (S3 + DynamoDB locking)
-- [ ] Stripe subscription billing
-- [ ] Multi-user teams & RBAC
-- [ ] GitHub Actions CI/CD integration
-- [ ] Slack/PagerDuty alerting
-- [ ] Cost anomaly detection with ML
-- [ ] Infrastructure drift detection
-- [ ] Custom Terraform module registry
-- [ ] Mobile app (React Native)
+### Phase 1 — MVP (Current)
+- [x] Project architecture and planning
+- [x] UI/UX design (user + admin views)
+- [ ] Database schema design
+- [ ] FastAPI backend with auth
+- [ ] AI → Terraform generation pipeline
+- [ ] AWS integration (EC2, VPC, RDS, S3)
+- [ ] Next.js frontend connected to backend
+- [ ] Basic admin panel
+
+### Phase 2 — Multi-Cloud
+- [ ] Azure integration
+- [ ] GCP integration
+- [ ] Infra visual canvas (React Flow)
+- [ ] Drift detection
+- [ ] Cost tracking dashboard
+
+### Phase 3 — Production Ready
+- [ ] Temporal workflow engine
+- [ ] Policy engine (OPA / Checkov)
+- [ ] Atlantis integration
+- [ ] pgvector semantic template search
+- [ ] Full observability stack
+- [ ] Keycloak enterprise auth option
+
+### Phase 4 — Scale
+- [ ] Template marketplace
+- [ ] Team collaboration
+- [ ] Multi-region support
+- [ ] SOC2 compliance features
+- [ ] Mobile app
+
+---
+
+## Cost of Running CloudRizzle
+
+One of the core principles of this project is keeping costs as low as possible.
+
+| Component | Cost |
+|---|---|
+| Next.js | Free (open source) |
+| FastAPI | Free (open source) |
+| PostgreSQL | Free (open source) |
+| Redis | Free (open source) |
+| Terraform | Free (open source) |
+| Temporal | Free (open source, self-hosted) |
+| Prometheus + Grafana + Loki | Free (open source) |
+| Clerk | Free up to 10,000 MAU |
+| AI API (Claude / GPT-4o) | Pay per token (bring your own key) |
+| **Server (EC2 / Azure VM)** | **~$30–60/month** |
+
+**Total software cost: $0.** You only pay for the server you deploy on.
+
+---
+
+## Contributing
+
+Contributions are welcome! This project is being built in public.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m 'feat: add my feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
 
 ---
 
 ## License
 
-MIT © CloudRizzle AI
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgements
+
+Built with love using:
+- [Terraform](https://terraform.io) — Infrastructure as Code
+- [LangGraph](https://langchain-ai.github.io/langgraph/) — AI workflow orchestration
+- [Temporal](https://temporal.io) — Durable workflow execution
+- [React Flow](https://reactflow.dev) — Infra canvas
+- [shadcn/ui](https://ui.shadcn.com) — UI components
+- [FastAPI](https://fastapi.tiangolo.com) — Backend framework
+
+---
+
+<div align="center">
+
+Made with dedication by the CloudRizzle team
+
+**[Website](#) · [Documentation](#) · [Discord](#) · [Twitter](#)**
+
+</div>
