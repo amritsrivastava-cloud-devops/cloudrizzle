@@ -1,0 +1,63 @@
+version: "3.9"
+
+# Development overrides — use with:
+# docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app          # Live reload: mount source
+      - terraform_workspace:/tmp/cloudrizzle-terraform
+    ports:
+      - "8000:8000"             # Expose backend directly in dev
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      NODE_ENV: development
+    user: "root"
+    volumes:
+      - ./frontend:/app         # Live reload
+      - /app/node_modules       # Don't override node_modules
+    ports:
+      - "3000:3000"
+
+  postgres:
+    ports:
+      - "5432:5432"             # Expose for local DB tools
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Skip Temporal in dev if not needed
+  temporal:
+    profiles:
+      - temporal
+
+  # Skip Nginx in dev — access services directly
+  nginx:
+    profiles:
+      - nginx
+
+  prometheus:
+    profiles:
+      - monitoring
+
+  grafana:
+    profiles:
+      - monitoring
+
+  loki:
+    profiles:
+      - monitoring
