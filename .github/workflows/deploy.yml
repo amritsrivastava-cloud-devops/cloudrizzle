@@ -1,0 +1,168 @@
+name: CI/CD — CloudRizzle
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BACKEND: ghcr.io/${{ github.repository }}/backend
+  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
+
+jobs:
+
+  # ─── Backend Tests ─────────────────────────────────────────
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: cloudrizzle_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install deps
+        working-directory: ./backend
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:testpass@localhost:5432/cloudrizzle_test
+          DATABASE_URL_SYNC: postgresql://postgres:testpass@localhost:5432/cloudrizzle_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key
+          CLERK_SECRET_KEY: test
+          ANTHROPIC_API_KEY: test
+        run: pytest tests/ -v --tb=short
+
+  # ─── Frontend Lint & Build ──────────────────────────────────
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install deps
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Lint
+        working-directory: ./frontend
+        run: npm run lint
+
+      - name: Type check
+        working-directory: ./frontend
+        run: npx tsc --noEmit
+
+  # ─── Build & Push Docker Images ─────────────────────────────
+  build:
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./docker/Dockerfile.backend
+          push: true
+          tags: ${{ env.IMAGE_BACKEND }}:latest,${{ env.IMAGE_BACKEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./docker/Dockerfile.frontend
+          push: true
+          tags: ${{ env.IMAGE_FRONTEND }}:latest,${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Deploy to EC2 ──────────────────────────────────────────
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/cloudrizzle
+
+            # Pull latest images
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull backend frontend
+
+            # Zero-downtime deploy
+            docker compose up -d --no-deps backend frontend
+
+            # Run DB migrations
+            docker compose exec -T backend alembic upgrade head
+
+            # Health check
+            sleep 10
+            curl -f http://localhost/health || exit 1
+
+            echo "Deploy complete ✓"
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "Deploy failed — check GitHub Actions logs"
